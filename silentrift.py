@@ -25,11 +25,16 @@ def print_banner():
     """Display the program banner with usage warnings."""
     banner = """
 ####################################################################
+#                                                                  #
+#          ╔═╗╦╦  ╔═╗╔╗╔╔╦╗  ╦═╗╦╔═╗╔╦╗                            #
+#          ╚═╗║║  ║╣ ║║║ ║   ╠╦╝║╠╣  ║                             #
+#          ╚═╝╩╩═╝╚═╝╝╚╝ ╩   ╩╚═╩╚   ╩                             #
 #          Wi-Fi Deauthentication Tool                             #
 #          For Educational Purposes Only                           #
 #                                                                  #
 #          Use this tool responsibly and legally                   #
 #          Unauthorized access to networks is prohibited           #
+#                                                                  #
 ####################################################################
     """
     print(banner)
