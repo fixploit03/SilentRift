@@ -13,6 +13,7 @@ import time
 import os
 import subprocess
 import signal
+import platform
 
 try:
     from scapy.all import sniff, sendp
@@ -38,6 +39,12 @@ def print_banner():
 ####################################################################
     """
     print(banner)
+
+def check_os():
+    """Check if the operating system is Linux."""
+    if platform.system() != "Linux":
+        print("[-] Error: This program can only be run on Linux systems!")
+        sys.exit(1)
 
 def check_root_privileges():
     """Check if the script is running with root privileges."""
@@ -119,7 +126,7 @@ def scan_interfaces():
             print("[-] No wireless network interfaces found!")
             sys.exit(1)
 
-        print("[*] Available Network Interfaces:\n")
+        print("[+] Available Network Interfaces:\n")
         print("{:<5} {:<15} {:<15} {:<20}".format("No", "Interface", "Mode", "Driver"))
         print("{:<5} {:<15} {:<15} {:<20}".format("-"*5, "-"*15, "-"*15, "-"*20))
         for i, iface in enumerate(interfaces):
@@ -167,7 +174,7 @@ def check_monitor_mode(interface):
             print(f"[+] {interface} is in monitor mode")
             return True
         else:
-            print(f"[*] {interface} is not in monitor mode")
+            print(f"[-] {interface} is not in monitor mode")
             return False
     except ValueError as e:
         print(f"[-] Error: {e}")
@@ -292,7 +299,8 @@ def scan_networks(interface):
         print("[-] No networks found!")
         sys.exit(1)
 
-    print("\n[*] Available Networks:\n")
+    os.system("clear")  # Clear screen after scanning
+    print("\n[+] Available Networks:\n")
     print("{:<5} {:<25} {:<10} {:<10} {:<20}".format("No", "ESSID", "Power", "Channel", "BSSID"))
     print("{:<5} {:<25} {:<10} {:<10} {:<20}".format("-"*5, "-"*25, "-"*10, "-"*10, "-"*20))
     for i, network in enumerate(networks):
@@ -432,8 +440,10 @@ def main():
         # Set up signal handler for cleaner exit on Ctrl+C
         signal.signal(signal.SIGINT, lambda sig, frame: sys.exit(1))
         
+        os.system("clear")  # Clear screen at startup
         print_banner()
         
+        check_os()  # Check if OS is Linux
         check_root_privileges()
         check_requirements()
 
