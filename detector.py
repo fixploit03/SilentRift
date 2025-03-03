@@ -1,38 +1,37 @@
-#!/usr/bin/env python3
-
 ##########################################################################################
 #                             *** WARNING ***                                            #
 #                                                                                        #
-#  USING THIS TOOL TO SCAN NETWORKS WITHOUT EXPLICIT PERMISSION IS ILLEGAL!              #
-#  ONLY USE IT ON NETWORKS YOU OWN OR ARE AUTHORIZED TO TEST.                            #
-#  MISUSE MAY RESULT IN SERIOUS LEGAL CONSEQUENCES.                                      #
-#  THE DEVELOPER IS NOT RESPONSIBLE FOR ANY UNAUTHORIZED OR HARMFUL USE.                 #
+#  THIS TOOL IS FOR DETECTING DEAUTHENTICATION ATTACKS ON YOUR OWN NETWORKS              #
+#  ONLY USE IT ON NETWORKS YOU OWN OR ARE AUTHORIZED TO MONITOR                          #
+#  MISUSE MAY RESULT IN LEGAL CONSEQUENCES                                               #
+#  THE DEVELOPER IS NOT RESPONSIBLE FOR ANY UNAUTHORIZED USE                             #
 #                                                                                        #
 ##########################################################################################
 
 import sys
-import time
 import os
+import subprocess
 import signal
 import platform
-import subprocess
-from scapy.all import *
+import re
+from scapy.all import sniff, Dot11, Dot11Deauth, RadioTap
+from datetime import datetime
 
-networks = {}  # Global dictionary untuk menyimpan data per SSID
+current_channel = 1  # Global variable for current channel
 
 def print_banner():
     """Display the program banner with usage warnings."""
     banner = """
 ####################################################################
 #                                                                  #
-#          ╔═╗╦╦  ╔═╗╔╗╔╔╦╗  ╦═╗╦╔═╗╔╦╗                            #
-#          ╚═╗║║  ║╣ ║║║ ║   ╠╦╝║╠╣  ║                             #
-#          ╚═╝╩╩═╝╚═╝╝╚╝ ╩   ╩╚═╩╚   ╩ [Scanner]                   #
-#          Wi-Fi Client Scanner Tool                               #
+#          ╔═╗╦╦  ╔═╗╔╗╔╔╦╗  ╔╦╗╦╔═╗╔═╗╔═╗                         #
+#          ╚═╗║║  ║╣ ║║║ ║   ║║║║╠╣ ║╣ ╚═╗                        #
+#          ╚═╝╩╩═╝╚═╝╝╚╝ ╩   ╩ ╩╩╚═╝╚═╝╚═╝ [Detector]             #
+#          Wi-Fi Deauthentication Detector                         #
 #          For Educational Purposes Only                           #
 #                                                                  #
 #          Use this tool responsibly and legally                   #
-#          Unauthorized access to networks is prohibited           #
+#          Unauthorized monitoring may be prohibited                #
 #                                                                  #
 ####################################################################
     """
@@ -164,29 +163,6 @@ def get_interface_choice(interfaces):
             print(f"[-] Unexpected error with interface selection: {e}")
             sys.exit(1)
 
-def get_scan_duration():
-    """Get a valid scanning duration per channel from the user."""
-    while True:
-        try:
-            duration = input("[#] Enter scanning duration per channel in seconds (default 5): ").strip()
-            if duration == "":
-                duration = 5
-            else:
-                duration = int(duration)
-            if duration <= 0:
-                print("[-] Error: Duration must be greater than 0!")
-                continue
-            print(f"[+] Scanning duration per channel set to {duration} seconds")
-            return duration
-        except ValueError:
-            print("[-] Error: Invalid input! Please enter a number.")
-        except KeyboardInterrupt:
-            print("\n[-] KeyboardInterrupt")
-            sys.exit(1)
-        except Exception as e:
-            print(f"[-] Unexpected error with duration input: {e}")
-            sys.exit(1)
-
 def check_monitor_mode(interface):
     """Check if the given interface is in monitor mode."""
     try:
@@ -290,102 +266,63 @@ def restore_managed_mode(interface):
     except Exception as e:
         print(f"[-] Unexpected error restoring managed mode: {e}")
 
-def packet_handler(pkt):
-    """Handle captured packets and organize by SSID."""
+def detect_deauth_packet(packet):
+    """Analyze packets for deauthentication frames."""
     try:
-        if not pkt or not pkt.haslayer(Dot11):
+        if not packet or not packet.haslayer(Dot11Deauth):
             return
-        if pkt.type == 0 and pkt.subtype == 8:  # Beacon frame
-            bssid = pkt.addr2
-            ssid = pkt.info.decode(errors='ignore').strip() if pkt.info else "Hidden SSID"
-            if ssid not in networks:
-                networks[ssid] = {"bssid": bssid, "clients": set()}
-        
-        elif pkt.type in [0, 2]:  # Management atau Data frames
-            bssid = pkt.addr3
-            src = pkt.addr2
-            dst = pkt.addr1
-            
-            for ssid, info in networks.items():
-                if info["bssid"] == bssid:
-                    if src and src != "ff:ff:ff:ff:ff:ff":
-                        info["clients"].add(src)
-                    if dst and dst != "ff:ff:ff:ff:ff:ff":
-                        info["clients"].add(dst)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        src = packet[Dot11].addr2
+        dst = packet[Dot11].addr1
+        bssid = packet[Dot11].addr3
+        print(f"\n[!] DEAUTH DETECTED at {timestamp}")
+        print(f"    Source MAC: {src}")
+        print(f"    Destination MAC: {dst}")
+        print(f"    BSSID: {bssid}")
+        print(f"    Channel: {current_channel}")
+        print("-" * 50)
     except AttributeError as e:
         print(f"[-] Malformed packet encountered: {e}")
     except Exception as e:
         print(f"[-] Error parsing packet: {e}")
 
-def scan_networks(interface, duration):
-    """Scan WiFi networks across channels 1-14 with specified duration."""
+def scan_channels(interface):
+    """Scan all channels from 1 to 14 for deauth packets."""
+    global current_channel
     try:
         if not os.path.exists(f"/sys/class/net/{interface}"):
             raise ValueError(f"Interface '{interface}' not found or no longer exists.")
-        total_time = duration * 14
-        print(f"[*] Scanning networks on {interface}...")
-        print(f"[*] Scanning each channel for {duration} seconds (Total: {total_time} seconds)")
-        for channel in range(1, 15):
-            print(f"[*] Scanning channel {channel}...")
-            result = subprocess.run(
-                ["sudo", "iwconfig", interface, "channel", str(channel)],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            if result.returncode != 0:
-                print(f"[-] Warning: Failed to set channel {channel}: {result.stderr}")
-                continue
-            try:
-                sniff(iface=interface, prn=packet_handler, timeout=duration)
-            except Exception as e:
-                print(f"[-] Error sniffing on channel {channel}: {e}")
-                continue
+        print("[*] Starting deauthentication detection...")
+        print("[*] Press Ctrl+C to stop")
+        print("-" * 50)
         
-        if not networks:
-            print("[-] No networks found!")
-            sys.exit(1)
-        
-        os.system("clear")
-        print("\n[+] Scan Results:\n")
-        print("{:<5} {:<25} {:<20} {:<10}".format("No", "ESSID", "BSSID", "Clients"))
-        print("{:<5} {:<25} {:<20} {:<10}".format("-"*5, "-"*25, "-"*20, "-"*10))
-        for i, (ssid, info) in enumerate(networks.items(), 1):
-            print("{:<5} {:<25} {:<20} {:<10}".format(i, ssid, info['bssid'], len(info['clients'])))
-        print("")
-        
-        while True:
-            try:
-                show_details = input("[#] Show detailed client list? (y/n): ").strip().lower()
-                if show_details not in ['y', 'n']:
-                    print("[-] Error: Please enter 'y' or 'n'!")
+        while True:  # Continuous scanning loop
+            for channel in range(1, 15):
+                current_channel = channel
+                print(f"[*] Scanning channel {channel}...")
+                result = subprocess.run(
+                    ["sudo", "iwconfig", interface, "channel", str(channel)],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode != 0:
+                    print(f"[-] Warning: Failed to set channel {channel}: {result.stderr}")
                     continue
-                break
-            except KeyboardInterrupt:
-                print("\n[-] KeyboardInterrupt")
-                sys.exit(1)
-        
-        if show_details == 'y':
-            print("\n[+] Detailed Results:\n")
-            for ssid, info in networks.items():
-                print(f"ESSID: {ssid}")
-                print(f"BSSID: {info['bssid']}")
-                print("Clients:")
-                if info['clients']:
-                    for client in info['clients']:
-                        print(f"  - {client}")
-                else:
-                    print("  - No clients detected")
-                print("")
-        
+                try:
+                    sniff(iface=interface, prn=detect_deauth_packet, timeout=5)
+                except Exception as e:
+                    print(f"[-] Error sniffing on channel {channel}: {e}")
+                    continue
+                    
     except ValueError as e:
         print(f"[-] Error: {e}")
         sys.exit(1)
     except KeyboardInterrupt:
-        print("\n[*] Scanning stopped by user")
+        print("\n[*] Detection stopped by user")
         raise
     except Exception as e:
-        print(f"[-] Unexpected error during network scan: {e}")
+        print(f"[-] Unexpected error during channel scan: {e}")
         sys.exit(1)
     finally:
         try:
@@ -400,7 +337,7 @@ def scan_networks(interface, duration):
             print(f"[-] Error handling restore choice: {e}")
 
 def main():
-    """Main function to run the WiFi client scanner."""
+    """Main function to run the Wi-Fi deauthentication detector."""
     try:
         signal.signal(signal.SIGINT, lambda sig, frame: sys.exit(1))
         
@@ -410,7 +347,7 @@ def main():
         check_os()
         check_root_privileges()
         check_requirements()
-        
+
         interfaces = scan_interfaces()
         interface = get_interface_choice(interfaces)
         
@@ -418,24 +355,11 @@ def main():
             interface = enable_monitor_mode(interface)
         else:
             print(f"[+] {interface} is already in monitor mode")
-        
-        duration = get_scan_duration()
-        scan_networks(interface, duration)
-        
+
+        scan_channels(interface)
+
     except KeyboardInterrupt:
         print("\n[-] KeyboardInterrupt")
-        if networks:
-            print("\n[+] Partial Results:")
-            for ssid, info in networks.items():
-                print(f"ESSID: {ssid}")
-                print(f"BSSID: {info['bssid']}")
-                print("Clients:")
-                if info['clients']:
-                    for client in info['clients']:
-                        print(f"  - {client}")
-                else:
-                    print("  - No clients detected")
-                print("")
         sys.exit(1)
     except Exception as e:
         print(f"[-] Unexpected error in main execution: {e}")
