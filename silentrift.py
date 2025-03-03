@@ -29,7 +29,7 @@ def print_banner():
 #                                                                  #
 #          ╔═╗╦╦  ╔═╗╔╗╔╔╦╗  ╦═╗╦╔═╗╔╦╗                            #
 #          ╚═╗║║  ║╣ ║║║ ║   ╠╦╝║╠╣  ║                             #
-#          ╚═╝╩╩═╝╚═╝╝╚╝ ╩   ╩╚═╩╚   ╩                             #
+#          ╚═╝╩╩═╝╚═╝╝╚╝ ╩   ╩╚═╩╚   ╩ [Deauther]                  #
 #          Wi-Fi Deauthentication Tool                             #
 #          For Educational Purposes Only                           #
 #                                                                  #
