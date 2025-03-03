@@ -1,7 +1,7 @@
 ##########################################################################################
 #                             *** WARNING ***                                            #
 #                                                                                        #
-#  USING THIS TOOL TO ATTACK NETWORKS WITHOUT EXPLICIT PERMISSION IS ILLEGAL!            #
+#  USING THIS PROGRAM TO ATTACK NETWORKS WITHOUT EXPLICIT PERMISSION IS ILLEGAL!         #
 #  ONLY USE IT ON NETWORKS YOU OWN OR ARE AUTHORIZED TO TEST.                            #
 #  MISUSE MAY RESULT IN SERIOUS LEGAL CONSEQUENCES.                                      #
 #  THE DEVELOPER IS NOT RESPONSIBLE FOR ANY UNAUTHORIZED OR HARMFUL USE.                 #
@@ -29,10 +29,10 @@ def display_banner():
 #          ╔═╗╦╦  ╔═╗╔╗╔╔╦╗  ╦═╗╦╔═╗╔╦╗                            #
 #          ╚═╗║║  ║╣ ║║║ ║   ╠╦╝║╠╣  ║                             #
 #          ╚═╝╩╩═╝╚═╝╝╚╝ ╩   ╩╚═╩╚   ╩                             #
-#          Wi-Fi Deauthentication Tool                             #
+#          Wi-Fi Deauthentication Program                          #
 #          For Educational Purposes Only                           #
 #                                                                  #
-#          Use this tool responsibly and legally                   #
+#          Use this program responsibly and legally                #
 #          Unauthorized access to networks is prohibited           #
 #                                                                  #
 ####################################################################
@@ -46,14 +46,14 @@ def check_os():
         sys.exit(1)
 
 def check_root_privileges():
-    """Check if the script is running with root privileges."""
-    script_name = os.path.basename(sys.argv[0])
+    """Check if the program is running with root privileges."""
+    program_name = os.path.basename(sys.argv[0])
     try:
         if os.getuid() != 0:
-            raise PermissionError("This scriptispersed be run as root (sudo).")
+            raise PermissionError("This program must be run as root (sudo).")
     except PermissionError as e:
         print(f"[-] Error: {e}")
-        print(f"[*] Please run the script using 'sudo python3 {script_name}'")
+        print(f"[*] Please run the program using 'sudo python3 {program_name}'")
         sys.exit(1)
     except Exception as e:
         print(f"[-] Unexpected error checking root privileges: {e}")
@@ -143,12 +143,13 @@ def scan_interfaces():
 
 def get_interface_choice(interfaces):
     """Prompt the user to select an interface by number."""
+    num_interfaces = len(interfaces)
     while True:
         try:
-            choice = input("[#] Enter interface number to use: ").strip()
+            choice = input(f"[#] Enter interface number (1-{num_interfaces}): ").strip()
             choice = int(choice)
-            if choice < 1 or choice > len(interfaces):
-                print(f"[-] Error: Please select a number between 1 and {len(interfaces)}!")
+            if choice < 1 or choice > num_interfaces:
+                print(f"[-] Error: Please select a number between 1 and {num_interfaces}!")
                 continue
             interface = interfaces[choice - 1]['name']
             if not os.path.exists(f"/sys/class/net/{interface}"):
@@ -159,7 +160,11 @@ def get_interface_choice(interfaces):
         except ValueError:
             print("[-] Error: Invalid input! Please enter a number.")
         except KeyboardInterrupt:
-            print("\n[-] KeyboardInterrupt")
+            print("\n[-] KeyboardInterrupt detected")
+            choice = input("[?] Restore interface to managed mode and restart NetworkManager? (y/n): ").strip().lower()
+            if choice == 'y' and 'interface' in locals():
+                restore_managed_mode(interface)
+            print("[*] Exiting program")
             sys.exit(1)
         except Exception as e:
             print(f"[-] Unexpected error with interface selection: {e}")
@@ -228,7 +233,11 @@ def enable_monitor_mode(interface):
         print("[*] Ensure the adapter supports monitor mode.")
         sys.exit(1)
     except KeyboardInterrupt:
-        print("\n[-] KeyboardInterrupt")
+        print("\n[-] KeyboardInterrupt detected")
+        choice = input("[?] Restore interface to managed mode and restart NetworkManager? (y/n): ").strip().lower()
+        if choice == 'y':
+            restore_managed_mode(interface)
+        print("[*] Exiting program")
         sys.exit(1)
     except Exception as e:
         print(f"[-] Unexpected error enabling monitor mode: {e}")
@@ -290,7 +299,11 @@ def scan_networks(interface):
         print(f"[-] Error: {e}")
         sys.exit(1)
     except KeyboardInterrupt:
-        print("\n[-] KeyboardInterrupt")
+        print("\n[-] KeyboardInterrupt detected")
+        choice = input("[?] Restore interface to managed mode and restart NetworkManager? (y/n): ").strip().lower()
+        if choice == 'y':
+            restore_managed_mode(interface)
+        print("[*] Exiting program")
         sys.exit(1)
     except Exception as e:
         print(f"[-] Unexpected error during network scan: {e}")
@@ -358,6 +371,7 @@ def get_valid_client(clients):
         print("[-] No clients available to select. Exiting.")
         sys.exit(1)
     
+    num_clients = len(clients)
     print("\n[+] Detected Clients:\n")
     print("{:<5} {:<20}".format("No", "Client MAC"))
     print("{:<5} {:<20}".format("-"*5, "-"*20))
@@ -367,10 +381,10 @@ def get_valid_client(clients):
 
     while True:
         try:
-            choice = input("[#] Enter client number to target: ").strip()
+            choice = input(f"[#] Enter client number to target (1-{num_clients}): ").strip()
             choice = int(choice)
-            if choice < 1 or choice > len(clients):
-                print(f"[-] Error: Please select a number between 1 and {len(clients)}!")
+            if choice < 1 or choice > num_clients:
+                print(f"[-] Error: Please select a number between 1 and {num_clients}!")
                 continue
             client_mac = clients[choice - 1]
             print(f"[+] Selected client: {client_mac}")
@@ -378,7 +392,11 @@ def get_valid_client(clients):
         except ValueError:
             print("[-] Error: Invalid input! Please enter a number.")
         except KeyboardInterrupt:
-            print("\n[-] KeyboardInterrupt")
+            print("\n[-] KeyboardInterrupt detected")
+            choice = input("[?] Restore interface to managed mode and restart NetworkManager? (y/n): ").strip().lower()
+            if choice == 'y' and 'interface' in locals():
+                restore_managed_mode(interface)
+            print("[*] Exiting program")
             sys.exit(1)
         except Exception as e:
             print(f"[-] Unexpected error with client selection: {e}")
@@ -388,7 +406,7 @@ def get_valid_packet_count():
     """Get a valid number of deauth packets from the user (0 or positive)."""
     while True:
         try:
-            count = input("[#] Enter number of deauth packets (0 for continuous): ").strip()
+            count = input("[#] Enter number of deauth packets (0 for continuous, 1 or more): ").strip()
             count = int(count)
             if count < 0:
                 print("[-] Error: Number of packets cannot be negative!")
@@ -398,7 +416,11 @@ def get_valid_packet_count():
         except ValueError:
             print("[-] Error: Invalid input! Please enter a number (0 or greater).")
         except KeyboardInterrupt:
-            print("\n[-] KeyboardInterrupt")
+            print("\n[-] KeyboardInterrupt detected")
+            choice = input("[?] Restore interface to managed mode and restart NetworkManager? (y/n): ").strip().lower()
+            if choice == 'y' and 'interface' in locals():
+                restore_managed_mode(interface)
+            print("[*] Exiting program")
             sys.exit(1)
         except Exception as e:
             print(f"[-] Unexpected error with packet count input: {e}")
@@ -447,8 +469,12 @@ def deauth_single_client(interface, bssid, channel):
         print(f"[-] Error: {e}")
         sys.exit(1)
     except KeyboardInterrupt:
-        print("\n[*] Deauth attack stopped by user.")
-        raise
+        print("\n[-] KeyboardInterrupt detected")
+        choice = input("[?] Restore interface to managed mode and restart NetworkManager? (y/n): ").strip().lower()
+        if choice == 'y':
+            restore_managed_mode(interface)
+        print("[*] Exiting program")
+        sys.exit(1)
     except Exception as e:
         print(f"[-] Error during deauth attack: {e}")
         sys.exit(1)
@@ -459,8 +485,15 @@ def deauth_single_client(interface, bssid, channel):
                 restore_managed_mode(interface)
             else:
                 print("[*] Interface left in current mode.")
+            print("[*] Exiting program")
+            sys.exit(0)
         except KeyboardInterrupt:
-            print("\n[-] KeyboardInterrupt")
+            print("\n[-] KeyboardInterrupt detected")
+            choice = input("[?] Restore interface to managed mode and restart NetworkManager? (y/n): ").strip().lower()
+            if choice == 'y':
+                restore_managed_mode(interface)
+            print("[*] Exiting program")
+            sys.exit(1)
         except Exception as e:
             print(f"[-] Error handling restore choice: {e}")
 
@@ -504,8 +537,12 @@ def deauth_all_clients(interface, bssid, channel, count):
         print(f"[-] Error: {e}")
         sys.exit(1)
     except KeyboardInterrupt:
-        print("\n[*] Deauth attack stopped by user.")
-        raise
+        print("\n[-] KeyboardInterrupt detected")
+        choice = input("[?] Restore interface to managed mode and restart NetworkManager? (y/n): ").strip().lower()
+        if choice == 'y':
+            restore_managed_mode(interface)
+        print("[*] Exiting program")
+        sys.exit(1)
     except Exception as e:
         print(f"[-] Error during deauth attack: {e}")
         sys.exit(1)
@@ -516,26 +553,38 @@ def deauth_all_clients(interface, bssid, channel, count):
                 restore_managed_mode(interface)
             else:
                 print("[*] Interface left in current mode.")
+            print("[*] Exiting program")
+            sys.exit(0)
         except KeyboardInterrupt:
-            print("\n[-] KeyboardInterrupt")
+            print("\n[-] KeyboardInterrupt detected")
+            choice = input("[?] Restore interface to managed mode and restart NetworkManager? (y/n): ").strip().lower()
+            if choice == 'y':
+                restore_managed_mode(interface)
+            print("[*] Exiting program")
+            sys.exit(1)
         except Exception as e:
             print(f"[-] Error handling restore choice: {e}")
 
 def get_valid_target(networks):
     """Get a valid target number from the user for deauthentication."""
+    num_networks = len(networks)
     while True:
         try:
-            target_num = input("[#] Enter target network number: ").strip()
+            target_num = input(f"[#] Enter target network number (1-{num_networks}): ").strip()
             target_num = int(target_num)
-            if target_num < 1 or target_num > len(networks):
-                print(f"[-] Error: Please select a number between 1 and {len(networks)}!")
+            if target_num < 1 or target_num > num_networks:
+                print(f"[-] Error: Please select a number between 1 and {num_networks}!")
                 continue
             print(f"[+] Target {networks[target_num - 1]['essid']} ({networks[target_num - 1]['bssid']}) selected")
             return networks[target_num - 1]
         except ValueError:
             print("[-] Error: Invalid input! Please enter a number.")
         except KeyboardInterrupt:
-            print("\n[-] KeyboardInterrupt")
+            print("\n[-] KeyboardInterrupt detected")
+            choice = input("[?] Restore interface to managed mode and restart NetworkManager? (y/n): ").strip().lower()
+            if choice == 'y' and 'interface' in locals():
+                restore_managed_mode(interface)
+            print("[*] Exiting program")
             sys.exit(1)
         except Exception as e:
             print(f"[-] Unexpected error with target selection: {e}")
@@ -547,6 +596,7 @@ def get_attack_mode_choice():
         {"mode": "Single Client (detected MAC)"},
         {"mode": "All Clients (detected clients)"}
     ]
+    num_modes = len(attack_modes)
     
     print("\n[+] Available Attack Modes:\n")
     print("{:<5} {:<35}".format("No", "Attack Mode"))
@@ -557,24 +607,28 @@ def get_attack_mode_choice():
 
     while True:
         try:
-            choice = input("[#] Enter attack mode number: ").strip()
+            choice = input(f"[#] Enter attack mode number (1-{num_modes}): ").strip()
             choice = int(choice)
-            if choice < 1 or choice > len(attack_modes):
-                print(f"[-] Error: Please select a number between 1 and {len(attack_modes)}!")
+            if choice < 1 or choice > num_modes:
+                print(f"[-] Error: Please select a number between 1 and {num_modes}!")
                 continue
             print(f"[+] Selected mode: {attack_modes[choice - 1]['mode']}")
             return choice
         except ValueError:
             print("[-] Error: Invalid input! Please enter a number.")
         except KeyboardInterrupt:
-            print("\n[-] KeyboardInterrupt")
+            print("\n[-] KeyboardInterrupt detected")
+            choice = input("[?] Restore interface to managed mode and restart NetworkManager? (y/n): ").strip().lower()
+            if choice == 'y' and 'interface' in locals():
+                restore_managed_mode(interface)
+            print("[*] Exiting program")
             sys.exit(1)
         except Exception as e:
             print(f"[-] Unexpected error with mode selection: {e}")
             sys.exit(1)
 
 def main():
-    """Main function to run the Wi-Fi deauthentication tool."""
+    """Main function to run the Wi-Fi deauthentication program."""
     global target_ssid
     try:
         signal.signal(signal.SIGINT, lambda sig, frame: sys.exit(1))
@@ -607,19 +661,27 @@ def main():
             deauth_all_clients(interface, target['bssid'], target['channel'], count)
 
     except KeyboardInterrupt:
-        print("\n[-] KeyboardInterrupt")
+        print("\n[-] KeyboardInterrupt detected")
+        choice = input("[?] Restore interface to managed mode and restart NetworkManager? (y/n): ").strip().lower()
+        if choice == 'y' and 'interface' in locals():
+            restore_managed_mode(interface)
+        print("[*] Exiting program")
         sys.exit(1)
     except Exception as e:
         print(f"[-] Unexpected error in main execution: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
-    """Entry point of the script."""
+    """Entry point of the program."""
     try:
         main()
     except KeyboardInterrupt:
-        print("\n[-] KeyboardInterrupt")
+        print("\n[-] KeyboardInterrupt detected")
+        choice = input("[?] Restore interface to managed mode and restart NetworkManager? (y/n): ").strip().lower()
+        if choice == 'y' and 'interface' in locals():
+            restore_managed_mode(interface)
+        print("[*] Exiting program")
         sys.exit(1)
     except Exception as e:
-        print(f"[-] Unexpected error in script execution: {e}")
+        print(f"[-] Unexpected error in program execution: {e}")
         sys.exit(1)
