@@ -483,8 +483,8 @@ def get_valid_packet_count():
 def get_attack_mode_choice():
     """Display attack modes and get user choice."""
     attack_modes = [
-        {"mode": "Single Client Attack (specific MAC)"},
-        {"mode": "All Clients Attack (broadcast)"}
+        {"mode": "Single Client (specific MAC)"},
+        {"mode": "All Clients (broadcast)"}
     ]
     
     print("\n[+] Available Attack Modes:\n")
