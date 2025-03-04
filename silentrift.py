@@ -210,7 +210,6 @@ class SilentRiftGUI:
         ttk.Button(client_tab, text="Scan Clients", 
                   command=self.scan_clients_threaded, style="Scan.TButton").pack(pady=5)
 
-        # About Tab
         about_tab = ttk.Frame(self.main_notebook)
         self.main_notebook.add(about_tab, text="About")
         
@@ -287,7 +286,8 @@ class SilentRiftGUI:
             if not interfaces:
                 raise ValueError("No wireless interfaces detected!")
             self.interface_combo["values"] = interfaces
-            self.interface_combo.set(interfaces[0])
+            if self.interface_combo.get() not in interfaces:
+                self.interface_combo.set(interfaces[0])  # Set ke interface pertama jika saat ini tidak valid
             self.update_interface_status()
             self.log(f"Detected interfaces: {', '.join(interfaces)}")
         except Exception as e:
@@ -330,6 +330,7 @@ class SilentRiftGUI:
             self.interface_combo.set(new_interface)
             self.update_interface_status()
             self.log(f"Monitor mode enabled on {new_interface}")
+            self.scan_interfaces()  # Refresh daftar interface
         except subprocess.CalledProcessError as e:
             self.log(f"Failed to enable monitor mode: {e.stderr}", error=True)
         except Exception as e:
@@ -343,8 +344,11 @@ class SilentRiftGUI:
                          stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             subprocess.run(["sudo", "systemctl", "restart", "NetworkManager"], 
                          check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            original_interface = interface.replace("mon", "")  # Misalnya wlan0mon -> wlan0
+            self.interface_combo.set(original_interface)
             self.update_interface_status()
-            self.log(f"Interface {interface} restored to managed mode")
+            self.log(f"Interface {original_interface} restored to managed mode")
+            self.scan_interfaces()  # Refresh daftar interface
         except subprocess.CalledProcessError as e:
             self.log(f"Failed to disable monitor mode: {e.stderr}", error=True)
         except Exception as e:
